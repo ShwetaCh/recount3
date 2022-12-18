@@ -48,7 +48,7 @@ dim(rse_gene_liver)
 #> [1] 63856    251
 
 ## Information about the genes/Annotaion
-rowRanges(rse_gene_liver)
+gene_annot = rowRanges(rse_gene_liver) %>% as.data.frame()
 ## samples and quality metrics
 colData(rse_gene_liver)
 
@@ -56,9 +56,11 @@ colData(rse_gene_liver)
 colData0 <- colData(rse_gene_liver) %>% as.data.frame()
 colData0 <- filter(colData0, gtex.run_acc != "NA", gtex.smnabtcht != "RNA isolation_PAXgene Tissue miRNA") 
 countData0 <- assays(rse_gene_liver)$counts %>% as.data.frame() %>% dplyr::select(rownames(colData0))
+TPMData0 <- assays(rse_gene_liver)$TPM %>% as.data.frame() %>% dplyr::select(rownames(colData0))
 ## Check if this matches
-length(rownames(colData0) == length(colnames(countData0)))
+length(rownames(colData0) == length(colnames(countData0))) == length(colnames(TPMData0))
 head(rownames(colData0) == colnames(countData0))
+head(rownames(colData0) == colnames(TPMData0))
 
 ## Look at data by age and biological condition if any
 library(tidyverse)
@@ -86,7 +88,7 @@ gene_info <- getBM(attributes=c('ensembl_gene_id','hgnc_symbol'),
   mutate(ensembl_gene_id = paste0(ensembl_gene_id, ".1", sep = ""))
 head(gene_info)
 
-## create long data
+## create long data for counts
 countData_long <- countData0 %>%
   mutate(ensembl_gene_id = rownames(.)) %>%
   pivot_longer(-ensembl_gene_id, 
@@ -97,10 +99,57 @@ countData_long <- countData0 %>%
 head(countData_long)
 
 countData_long %>%
-  filter( hgnc_symbol == "MT-CO2") %>%
+  filter( hgnc_symbol == "UGT1A9") %>%
   ggplot(aes(x = as.character(gtex.sex), y = counts, fill = gtex.smtsd)) +
   geom_boxplot() +
   #scale_y_log10() +
-  labs(y = 'MT-CO2 counts', x = "Sex", fill = "Tissue") +
+  labs(y = 'counts', x = "Sex", fill = "Tissue") +
   theme_linedraw(base_size = 15) +
   scale_y_continuous(labels = scales::label_number_si()) 
+
+## create long data for TPM
+tmpData_long <- TPMData0 %>%
+  mutate(ensembl_gene_id = rownames(.)) %>%
+  pivot_longer(-ensembl_gene_id, 
+               names_to = "external_id", values_to = "TPM") %>%
+  dplyr::inner_join(gene_info, .,by = "ensembl_gene_id") %>% 
+  dplyr::full_join(colData0, ., by = "external_id") %>%
+  arrange(desc(TPM))
+head(countData_long)
+
+tmpData_long %>%
+  filter( .,hgnc_symbol == "UGT1A9") %>%
+  ggplot(aes(x = as.character(gtex.sex), y = TPM, fill = gtex.smtsd)) +
+  geom_boxplot() +
+  #scale_y_log10() +
+  labs(y = 'TPM', x = "Sex", fill = "Tissue") +
+  theme_linedraw(base_size = 15) +
+  scale_y_continuous(labels = scales::label_number_si()) 
+
+## Remove mitochondrial genes
+tmpData_long_fil = filter(tmpData_long, !hgnc_symbol %like% "MT-", ) %>%
+  dplyr::select(ensembl_gene_id, hgnc_symbol, TPM, gtex.subjid, gtex.sex, gtex.smtsd); 
+dim(tmpData_long_fil)
+names(tmpData_long_fil)
+head(tmpData_long_fil)
+
+tmpData_long_fil = left_join(tmpData_long_fil, gene_annot, by = c('ensembl_gene_id' = 'gene_id')) %>%
+  filter(gene_type == "protein_coding")
+dim(tmpData_long_fil)
+names(tmpData_long_fil)
+head(tmpData_long_fil)
+
+tmpData_long_fil.aggr = tmpData_long_fil %>% 
+  group_by(hgnc_symbol,gtex.sex) %>% 
+  dplyr::summarise(.,avgTPM = mean(TPM)) %>%
+  arrange(desc(avgTPM))
+head(tmpData_long_fil.aggr)
+
+tmpData_long_fil.aggr = tmpData_long_fil %>% 
+  group_by(hgnc_symbol) %>% 
+  dplyr::summarise(.,avgTPM = mean(TPM)) %>%
+  arrange(desc(avgTPM)) %>%
+  filter(avgTPM >=0.1)
+head(tmpData_long_fil.aggr)
+dim(tmpData_long_fil.aggr)
+
