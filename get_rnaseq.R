@@ -55,8 +55,9 @@ colData(rse_gene_liver)
 ## Make it a data frame and remove miRNA files & any files that don’t have an accession number linking the source files
 colData0 <- colData(rse_gene_liver) %>% as.data.frame()
 colData0 <- filter(colData0, gtex.run_acc != "NA", gtex.smnabtcht != "RNA isolation_PAXgene Tissue miRNA") 
-countData0 <- assays(rse_gene_liver)$counts %>% as.data.frame()
+countData0 <- assays(rse_gene_liver)$counts %>% as.data.frame() %>% dplyr::select(rownames(colData0))
 ## Check if this matches
+length(rownames(colData0) == length(colnames(countData0)))
 head(rownames(colData0) == colnames(countData0))
 
 ## Look at data by age and biological condition if any
